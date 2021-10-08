@@ -20,8 +20,8 @@ class data(object):
         with open(TESTFILENAME) as f:
             self.test_data = json.load(f)
 
-        random.shuffle(self.train_data)
-        random.shuffle(self.test_data)
+        np.random.shuffle(self.train_data)
+        np.random.shuffle(self.test_data)
 
         with open(EMBEDFILE,'r') as f:
             self.embed = json.load(f)
@@ -77,7 +77,7 @@ class data(object):
         target_list = np.array(target_list)
         target_list = Variable(torch.from_numpy(target_list)).type(torch.LongTensor)
         train_data = TensorDataset(data_list, target_list)
-        print(len(train_data))
+        print("training data size for model = {}".format(len(train_data)))
         train_loader = DataLoader(dataset = train_data, batch_size = self.batch_size, shuffle = True)
         return train_loader 
     
@@ -90,30 +90,40 @@ class data(object):
 
         return action_values
         
-    def choose_data(self, action): 
+    def update(self, action): 
         # action is a number of a cluster, this function need to choose some data in that cluster randomly
         cluster_number = action
         choosed_num = 0
-        choosed_data_ind = []
+        choosed_data = []
+        choosed_word_pair = []
+        cluster_num = 0
         ind = 0
+        for train_data in self.train_data_clustered:
+            if int(train_data[self.embed_dim + 2]) == cluster_number and (int(train_data[self.embed_dim + 1]) == -1):
+                cluster_num += 1
 
         for train_data in self.train_data_clustered:
             if (train_data[self.embed_dim + 2] == cluster_number) and (train_data[self.embed_dim + 1] == -1):
                 choosed_num += 1
-                choosed_data_ind.append(ind)
+                train_data[self.embed_dim + 1] = 2
+                choosed_data.append(train_data[:self.embed_dim + 1])
+                word_pair = self.train_data[ind]
+                choosed_word_pair.append(word_pair) 
             if choosed_num == self.batch_size:
                 break
             ind += 1
 
-        return choosed_data_ind
-    
-    def update(self, data_id, choose_or_not):
-        if choose_or_not == 1:
-            self.train_data_clustered[data_id, self.embed_dim + 1] = 2
-            self.labeled_num += 1
-            # print(self.train_data_clustered[data_id, self.embed_dim + 2])
-            self.unlabeled_num_of_each_cluster[int(self.train_data_clustered[data_id, self.embed_dim + 2])] -= 1
-
+        self.labeled_num += self.batch_size
+        # print('cluster_number', cluster_number, 'cluster_num', cluster_num)
+        # print('choosed_num', choosed_num)
+       
+        self.unlabeled_num_of_each_cluster[cluster_number] += -self.batch_size
+        if choosed_num < self.batch_size or self.unlabeled_num_of_each_cluster[cluster_number] < self.batch_size:
+            self.unempty_cluster.remove(cluster_number)
+            print(cluster_number, 'removed')
+            
+        print('remain data:', self.unempty_cluster)
+        # print('unlabeled_num:', self.unlabeled_num_of_each_cluster)    
         center_points = np.zeros((self.cluster_num, self.embed_dim))
         for train_data in self.train_data_clustered:
             if train_data[self.embed_dim + 1] == -1:
@@ -126,8 +136,14 @@ class data(object):
                 center_points[ind] = center_points[ind] / self.unlabeled_num_of_each_cluster[ind]
         
         self.center_points = center_points
-        
-        return 
+
+        return choosed_data, choosed_word_pair
+
+    def get_label_distribution(self):
+        label_num = np.array(self.labeled_positive_negative_sample_of_each_cluster).sum(axis=1)
+        unlabel_num = self.unlabeled_num_of_each_cluster
+        res = np.array([x/y if y != 0 else 0.0 for x, y in zip(label_num, unlabel_num)])
+        return res / res.sum()
 
     def get_unlabeled_data(self, ):
         unlabeled_data = []
@@ -152,7 +168,7 @@ class data(object):
         return 
     
     def reset(self, ): 
-        random.shuffle(self.train_data_clustered)
+        np.random.shuffle(self.train_data_clustered)
         self.train_data_clustered[:, self.embed_dim + 1] = -1
         self.unlabeled_num_of_each_cluster = np.zeros(self.cluster_num)
         self.labeled_positive_negative_sample_of_each_cluster = np.zeros((self.cluster_num, 2))

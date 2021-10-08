@@ -36,6 +36,7 @@ class state(object):
         y = self.Model.net.uncertain(x).detach()
         uncertainty = np.zeros(self.cluster_num)
         i = 0
+
         for ind in self.data.train_data_clustered:
             if ind[self.dim + 1] == -1:
                 uncertainty[int(ind[self.dim + 2])] += abs(y[i, 0] - y[i, 1])
@@ -47,7 +48,8 @@ class state(object):
                 uncertainty[i] = 0
             else:
                 uncertainty[i] = uncertainty[i] / self.data.unlabeled_num_of_each_cluster[i]
-           
+
+        #
         norm = max(uncertainty) 
         uncertainty = uncertainty / norm     
         
@@ -79,10 +81,10 @@ class state(object):
         
     def update(self, ): 
         state_uncertainty = self.uncertainty().tolist()
-        # state_cluster_entropy = self.cluster_entropy().tolist()
+        state_cluster_entropy = self.cluster_entropy().tolist()
         self.state_feature = []
         self.state_feature.extend(state_uncertainty)
-        # self.state_feature.extend(state_cluster_entropy)
+        self.state_feature.extend(state_cluster_entropy)
 
         # self.state_feature[: self.cluster_num * self.dim] = self.data.center_points.reshape(self.cluster_num * self.dim)
         # self.state_feature[self.cluster_num * self.dim: self.cluster_num * self.dim + self.cluster_num] = state_uncertainty
@@ -92,37 +94,8 @@ class state(object):
 
         state_feature = np.array(self.state_feature)
         # print('feature1:', state_feature)
-        # print(len(state_feature))
         return state_feature
     
     def distance(self, data_point, k):
         dist, ind = self.kdTree.query(data_point.reshape(1,-1), k=k)
         return dist
-
-    def agent2_feature(self, choose_data_id, action_value, k=5):
-        # feature2 = np.zeros(self.dim + 2)
-        # feature2[:self.dim] = self.data.train_data_clustered[choose_data_id, :self.dim]
-        # x = self.data.train_data_clustered[choose_data_id,  :self.dim]
-        # x = Variable(torch.from_numpy(x)).type(torch.FloatTensor).to(self.device)
-        # y = self.Model.net.uncertain(x).detach() 
-        # uncertain = abs(y[0] - y[1])
-        # feature2[self.dim] = uncertain
-        # feature2[self.dim + 1] = action_value
-
-        featrue2 = []
-        x = self.data.train_data_clustered[choose_data_id,  :self.dim]
-        dist = self.distance(x, k)[0]
-        dist = dist.tolist()
-        
-        x = Variable(torch.from_numpy(x)).type(torch.FloatTensor).to(self.device)
-        word_featrue = self.Model.net.word_feature(x).detach().tolist()
-        y = self.Model.net.uncertain(x).detach() 
-        uncertain = abs(y[0] - y[1]).tolist()
-        action_value = action_value.tolist()
-        featrue2.extend(word_featrue)
-        featrue2.append(uncertain)
-        featrue2.append(action_value)
-        featrue2.extend(dist)
-        featrue2 = np.array(featrue2)
-        # print(featrue2)
-        return featrue2

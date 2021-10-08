@@ -33,8 +33,8 @@ class DQN(object):
         self.BATCH_SIZE = 16
         self.LR = 0.01
         self.MEMORY_CAPACITY = MEMORY_CAPACITY
-        self.TARGET_REPLACE_ITER = 10
-        self.GAMMA = 0.8
+        self.TARGET_REPLACE_ITER = 20
+        self.GAMMA = 0.9
         self.device = device
 
         self.learn_step_counter = 0 
@@ -51,18 +51,20 @@ class DQN(object):
         self.Q_Net_loss = []
    
     def choose_action(self, x, j): 
-        epsilon = 0.4 + j * 0.01
+        epsilon = 0.8
         x = x.squeeze(-1)
-        x = x.to(self.device) 
-        actions_value = self.eval_net.forward(x).detach().numpy()
-        actions_value = self.data.value_filter(actions_value)  
-        
+        x = x.to(self.device)
         if np.random.uniform() < epsilon: 
+            # print('state:', x)
+            # print(self.eval_net.forward(x))
+            actions_value = self.eval_net.forward(x).detach().numpy()
+            actions_value = self.data.value_filter(actions_value)  
             action = np.argmax(actions_value)
+            # print('actions_value:', actions_value)
         else:
             action = random.choice(list(self.data.unempty_cluster))
             
-        return action, actions_value[action]   
+        return action    
 
     def store_transition(self, s, a, r, s_next):
         s = s.squeeze(-1)
@@ -78,7 +80,10 @@ class DQN(object):
         self.learn_step_counter += 1
 
         sample_index = np.random.choice(self.MEMORY_CAPACITY, self.BATCH_SIZE)
-        b_memory = self.memory[sample_index, :] 
+
+        print("train agent with {} instances".format(sample_index))
+
+        b_memory = self.memory[sample_index, :]
         
         b_s = torch.FloatTensor(b_memory[:, :self.N_STATES]).to(self.device)
         b_a = torch.LongTensor(b_memory[:, self.N_STATES:self.N_STATES+1].astype(int)).to(self.device)
@@ -101,7 +106,7 @@ class DQN(object):
         q_target_numpy = q_target.numpy()
         q_eval_numpy = q_eval.detach().numpy()
         print('loss:', loss)
-        if self.learn_step_counter > 50:
+        if self.learn_step_counter > 1:
             self.Q_Net_loss.append(math.sqrt(float(loss)))
 
         # 计算, 更新 eval net

@@ -12,9 +12,9 @@ class Classify_Net(nn.Module):
         super(Classify_Net, self).__init__()
         # self.EMBEDDING_DIM = EMBEDDING_DIM
         # self.embedding = nn.Embedding(n_dict, EMBEDDING_DIM)
-        self.fc1 = nn.Linear(EMBEDDING_DIM, 8)
+        self.fc1 = nn.Linear(EMBEDDING_DIM, 12)
         self.fc1.weight.data.normal_(0, 0.1)  
-        self.out = nn.Linear(8, 2)
+        self.out = nn.Linear(12, 2)
         self.out.weight.data.normal_(0, 0.1)  
 
     def forward(self, x):
@@ -32,10 +32,6 @@ class Classify_Net(nn.Module):
         x = self.out(x)
         return x
     
-    def word_feature(self, x):
-        x = self.fc1(x)
-        return x
-
     def reset(self, ):
         self.fc1.weight.data.normal_(0, 0.1)  
         self.out.weight.data.normal_(0, 0.1)  
@@ -49,11 +45,15 @@ class model(object):
         self.device = device 
         self.data = data
         self.EMBEDDING_DIM = EMBEDDING_DIM
-        self.acc = 0.8
+        self.acc = 0 #0.8
+
+    def get_batch_size(self):
+        return self.data.batch_size
        
     def train(self, ): # 使用所有有标签数据训练
         # print('start train!')
         loader = self.data.train_loader()
+
         for i in range(self.epoch):
             total_loss = 0 
             batch_num = 0
@@ -71,9 +71,9 @@ class model(object):
                 self.optimizer.step()
 
             # if i % 24 == 0:
-            #     print(i + 1, "epoch  loss:", total_loss / self.data.labeled_num)
+            #    print(i + 1, "epoch  loss:", total_loss / self.data.labeled_num)
 
-            # if total_loss / self.data.labeled_num < 0.005:
+            # if total_loss / self.data.labeled_num < 0.001:
             #     break
     
     def test(self, ): # 测试模型准确率上升
@@ -101,7 +101,7 @@ class model(object):
 
             if (y_predict[0] - y_predict[1]) * (y - 0.5) < 0:
                 acc_num += 1
-
+        print("rest data effect = ")
         print(acc_num, len(unlabeled_data_list))
         return acc_num / len(unlabeled_data_list)
 
@@ -109,19 +109,28 @@ class model(object):
         new_acc = self.test()
         acc_change = new_acc - self.acc
         self.acc = new_acc
+        if acc_change < 0:
+            print()
         return acc_change
 
-    def give_label(self, ):
-        ind = 0
-        for train_data in self.data.train_data_clustered:
-            x = train_data[:self.EMBEDDING_DIM]
-            x = Variable(torch.from_numpy(x)).type(torch.FloatTensor).to(self.device)
-            y = self.net.forward(x).detach().cpu().numpy()
-            if train_data[self.EMBEDDING_DIM + 1] >= 0:
-                if y[0] > y[1]:
-                    train_data[self.EMBEDDING_DIM + 1] = 0
-                    self.data.labeled_positive_negative_sample_of_each_cluster[int(train_data[self.EMBEDDING_DIM + 2]), 0] += 1
-                else:
-                    train_data[self.EMBEDDING_DIM + 1] = 1
-                    self.data.labeled_positive_negative_sample_of_each_cluster[int(train_data[self.EMBEDDING_DIM + 2]), 1] += 1
-            ind += 1
+    def give_label(self, ground_truth=True):
+
+        if not ground_truth:
+            for train_data in self.data.train_data_clustered:
+                x = train_data[:self.EMBEDDING_DIM]
+                x = Variable(torch.from_numpy(x)).type(torch.FloatTensor).to(self.device)
+                y = self.net.forward(x).detach().cpu().numpy()
+                if train_data[self.EMBEDDING_DIM + 1] >= 0:
+                    if y[0] > y[1]:
+                        train_data[self.EMBEDDING_DIM + 1] = 0
+                        self.data.labeled_positive_negative_sample_of_each_cluster[int(train_data[self.EMBEDDING_DIM + 2]), 0] += 1
+                    else:
+                        train_data[self.EMBEDDING_DIM + 1] = 1
+                        self.data.labeled_positive_negative_sample_of_each_cluster[int(train_data[self.EMBEDDING_DIM + 2]), 1] += 1
+        else:
+            label_cid = self.data.train_data_clustered[:, self.EMBEDDING_DIM:]
+            label_cid = label_cid[label_cid[:, 1] >= 0]
+            for i in range(len(self.data.labeled_positive_negative_sample_of_each_cluster)):
+                positive_label = label_cid[label_cid[:, 2] == i, 0].sum()
+                self.data.labeled_positive_negative_sample_of_each_cluster[i, 1] = positive_label
+                self.data.labeled_positive_negative_sample_of_each_cluster[i, 0] = len(label_cid[label_cid[:, 2] == i]) - positive_label
